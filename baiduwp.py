@@ -40,9 +40,24 @@ class BaiduWP:
             match = re.search(r'points":(\d+)', resp.text)
             if match:
                 sign_point = match.group(1)
-            error_match = re.search(r'"error_msg":"(.*?)",', resp.text)
-            if error_match:
-                signin_error_msg = error_match.group(1)
+            # 原正则要求 error_msg 后面跟逗号，当 error_msg 在 JSON 末尾时匹配不到，
+            # 会把错误响应当成「无错误」——静默失败的主要入口。
+            # 改为先走 JSON 解析，失败再回退到宽松正则。
+            try:
+                data = resp.json()
+                signin_error_msg = str(data.get("error_msg", "") or "")
+                if not signin_error_msg and data.get("error_code"):
+                    signin_error_msg = f"error_code={data['error_code']}"
+                if not signin_error_msg and data.get("errno") not in (None, 0):
+                    signin_error_msg = f"errno={data['errno']}"
+            except Exception:
+                error_match = re.search(r'"error_msg"\s*:\s*"(.*?)"', resp.text)
+                if error_match:
+                    signin_error_msg = error_match.group(1)
+
+            # 响应里既没积分也没错误信息 = 格式不符预期，不能当成成功
+            if sign_point is None and not signin_error_msg:
+                signin_error_msg = f"响应无积分字段且无错误信息，可能是 Cookie 失效: {resp.text[:120]}"
         else:
             signin_error_msg = f"签到请求失败: HTTP {resp.status_code}"
         return sign_point, signin_error_msg
@@ -126,10 +141,20 @@ def is_benign_signin_message(message: str) -> bool:
         return True
     benign_markers = [
         "已签到",
+        "今日已",
         "repeat signin",
         "success",
     ]
     return any(marker in normalized for marker in benign_markers)
+
+
+def is_already_signed_message(message: str) -> bool:
+    """区分「今天已经签过」和「根本没签成」。
+
+    两者积分都是 0，但前者正常、后者是故障。
+    """
+    normalized = (message or "").strip().lower()
+    return any(m in normalized for m in ["已签到", "今日已", "repeat signin"])
 
 
 def is_benign_answer_message(message: str) -> bool:
@@ -194,10 +219,27 @@ def total_points_for_result(result: dict) -> int:
     return sign_point + answer_score
 
 
-def build_summary_lines(results: list[dict], failed: bool, error_message: str = "") -> list[str]:
+def build_summary_lines(
+    results: list[dict],
+    failed: bool,
+    error_message: str = "",
+    alerts: list[str] | None = None,
+    warnings: list[str] | None = None,
+) -> list[str]:
     lines = []
-    lines.append("📊 签到 & 答题汇总结果")
+    # 标题分级：真正需要处理的问题要从日常日报里跳出来
+    if alerts:
+        lines.append("🚨 百度网盘签到异常 — 需人工介入")
+    elif warnings:
+        lines.append("⚠️ 签到 & 答题汇总结果 — 有待确认项")
+    else:
+        lines.append("📊 签到 & 答题汇总结果")
     lines.append("")
+
+    if alerts:
+        for a in alerts:
+            lines.append(a)
+        lines.append("")
     lines.append("统计")
     lines.append(f"条目数: {len(results)}")
     lines.append(f"总积分增量: {sum(total_points_for_result(result) for result in results)}")
@@ -217,6 +259,12 @@ def build_summary_lines(results: list[dict], failed: bool, error_message: str = 
         lines.append(f"最早执行(北京): {to_beijing_time(earliest)}")
     if error_message:
         lines.append(f"错误: {error_message}")
+
+    if warnings:
+        lines.append("")
+        for w in warnings:
+            lines.append(w)
+
     lines.append("")
     lines.append("🔍 逐条详情")
     return lines
@@ -266,8 +314,17 @@ def build_detail_lines(index: int, result: dict) -> list[str]:
     return lines
 
 
-def render_text_summary(results: list[dict], failed: bool, error_message: str = "") -> str:
-    lines = build_summary_lines(results=results, failed=failed, error_message=error_message)
+def render_text_summary(
+    results: list[dict],
+    failed: bool,
+    error_message: str = "",
+    alerts: list[str] | None = None,
+    warnings: list[str] | None = None,
+) -> str:
+    lines = build_summary_lines(
+        results=results, failed=failed, error_message=error_message,
+        alerts=alerts, warnings=warnings,
+    )
     for index, result in enumerate(results, start=1):
         lines.extend(build_detail_lines(index=index, result=result))
         lines.append("")
@@ -275,10 +332,27 @@ def render_text_summary(results: list[dict], failed: bool, error_message: str = 
     return "\n".join(lines).rstrip()
 
 
-def render_telegram_html(results: list[dict], failed: bool, error_message: str = "") -> str:
+def render_telegram_html(
+    results: list[dict],
+    failed: bool,
+    error_message: str = "",
+    alerts: list[str] | None = None,
+    warnings: list[str] | None = None,
+) -> str:
     lines = []
-    for line in render_text_summary(results=results, failed=failed, error_message=error_message).splitlines():
-        if line in ("📊 签到 & 答题汇总结果", "统计", "🔍 逐条详情"):
+    text = render_text_summary(
+        results=results, failed=failed, error_message=error_message,
+        alerts=alerts, warnings=warnings,
+    )
+    bold_heads = (
+        "📊 签到 & 答题汇总结果",
+        "🚨 百度网盘签到异常 — 需人工介入",
+        "⚠️ 签到 & 答题汇总结果 — 有待确认项",
+        "统计",
+        "🔍 逐条详情",
+    )
+    for line in text.splitlines():
+        if line in bold_heads or line.startswith("🚨 账号"):
             lines.append(f"<b>{html.escape(line)}</b>")
         elif line.startswith("条目 #"):
             lines.append(f"<b>{html.escape(line)}</b>")
@@ -338,9 +412,21 @@ def send_feishu_message(message_text: str):
     response.raise_for_status()
 
 
-def send_notifications(results: list[dict], failed: bool, error_message: str = ""):
-    telegram_message = render_telegram_html(results=results, failed=failed, error_message=error_message)
-    feishu_message = render_text_summary(results=results, failed=failed, error_message=error_message)
+def send_notifications(
+    results: list[dict],
+    failed: bool,
+    error_message: str = "",
+    alerts: list[str] | None = None,
+    warnings: list[str] | None = None,
+):
+    telegram_message = render_telegram_html(
+        results=results, failed=failed, error_message=error_message,
+        alerts=alerts, warnings=warnings,
+    )
+    feishu_message = render_text_summary(
+        results=results, failed=failed, error_message=error_message,
+        alerts=alerts, warnings=warnings,
+    )
     errors = []
 
     try:
@@ -358,12 +444,32 @@ def send_notifications(results: list[dict], failed: bool, error_message: str = "
 
 
 def main():
+    from state import (
+        load_state, save_state, record_results,
+        build_warnings, check_cookie_age,
+    )
+
     results = []
     failed = False
     error_message = ""
+    alerts: list[str] = []
+    warnings: list[str] = []
+
+    state = load_state()
+    now = datetime.now(timezone(timedelta(hours=8)))
 
     try:
         cookies = load_accounts()
+
+        # Cookie 年龄检查 —— 在过期前提醒，而不是过期后排查
+        for index, cookie in enumerate(cookies, start=1):
+            w = check_cookie_age(state, index, cookie, datetime.now(timezone.utc))
+            if w:
+                print(w)
+                if w.startswith("🚨"):
+                    alerts.append(w)
+                else:
+                    warnings.append(w)
 
         for index, cookie in enumerate(cookies, start=1):
             result = BaiduWP(cookie).run()
@@ -394,9 +500,24 @@ def main():
         error_message = str(exc)
         print(f"执行失败: {error_message}")
     finally:
-        send_notifications(results=results, failed=failed, error_message=error_message)
+        # 跨天追踪：连续失败 / 连续零积分检测
+        try:
+            streak_alerts = record_results(state, results, now)
+            alerts.extend(streak_alerts)
+            warnings.extend(build_warnings(state, results))
+            for a in streak_alerts:
+                print(a)
+            save_state(state)
+        except Exception as exc:
+            print(f"状态追踪异常（不影响签到）: {exc}")
 
-    if failed:
+        send_notifications(
+            results=results, failed=failed, error_message=error_message,
+            alerts=alerts, warnings=warnings,
+        )
+
+    # 连续零积分等静默失败也要让 Action 标红，否则依然看不见
+    if failed or alerts:
         sys.exit(1)
 
 
