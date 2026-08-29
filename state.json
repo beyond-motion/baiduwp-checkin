@@ -5,14 +5,14 @@
       "cookie_fingerprint": "1d99feb4e0de2b0a",
       "cookie_first_seen": "2026-08-02",
       "fail_streak": 0,
-      "last_point_gain": "2026-08-29",
-      "last_run": "2026-08-29",
-      "last_success": "2026-08-29",
-      "total_runs": 26,
+      "last_point_gain": "2026-08-30",
+      "last_run": "2026-08-30",
+      "last_success": "2026-08-30",
+      "total_runs": 27,
       "zero_point_streak": 0
     }
   },
-  "last_run_at": "2026-08-29T08:33:03.799416+08:00",
+  "last_run_at": "2026-08-30T03:23:49.017493+08:00",
   "runs": [
     {
       "accounts": 1,
@@ -142,6 +142,11 @@
     {
       "accounts": 1,
       "date": "2026-08-29",
+      "total_points": 17
+    },
+    {
+      "accounts": 1,
+      "date": "2026-08-30",
       "total_points": 17
     }
   ],
