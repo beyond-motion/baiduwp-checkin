@@ -214,9 +214,9 @@ def is_answer_success(result: dict) -> bool:
 
 
 def total_points_for_result(result: dict) -> int:
-    sign_point = int(result.get("sign_point") or 0)
-    answer_score = int(result.get("answer_score") or 0)
-    return sign_point + answer_score
+    """已到账积分。只算签到分——答题接口的 score 只是「答题成功」回执，
+    积分需在 App 内手动领取（2026-09 实测后台无入账），计入会虚报。"""
+    return int(result.get("sign_point") or 0)
 
 
 def build_summary_lines(
@@ -286,7 +286,7 @@ def build_detail_lines(index: int, result: dict) -> list[str]:
         signin_detail = signin_message
 
     if answer_score > 0:
-        answer_detail = f"答题成功, 获得积分: {answer_score}, 提示: {answer_message}"
+        answer_detail = f"答题回执成功, 分值:{answer_score}（积分需在 App 内手动领取，未计入总积分）, 提示: {answer_message}"
         answer_icon = "✅"
     elif is_answer_skipped(result):
         answer_detail = answer_message
@@ -310,7 +310,7 @@ def build_detail_lines(index: int, result: dict) -> list[str]:
     lines.append(
         f"用户信息: 当前会员等级: {result.get('current_level') or ''}, 成长值: {result.get('current_value') or ''}"
     )
-    lines.append(f"本条累计积分变动: {total_points_for_result(result)}")
+    lines.append(f"本条到账积分: {total_points_for_result(result)}（仅含签到；答题积分需手动领取未计入）")
     return lines
 
 
