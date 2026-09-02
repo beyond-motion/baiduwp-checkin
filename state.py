@@ -87,7 +87,9 @@ def check_cookie_age(state: dict, index: int, cookie: str, today: datetime) -> s
     entry["cookie_days_left"] = remaining
 
     if remaining <= 0:
-        return f"🚨 账号{index} Cookie 已用 {age} 天（经验寿命 {COOKIE_LIFETIME_DAYS} 天）— 建议重新抓取"
+        # 年龄预警是预测性提醒（签到可能仍在成功），不进 alerts/exit 1，
+        # 否则会把「该换 Cookie 了」和「真失败」混在同一个红灯里
+        return f"⚠️ 账号{index} Cookie 已用 {age} 天（经验寿命 {COOKIE_LIFETIME_DAYS} 天）— 建议重新抓取"
     if remaining <= WARN_THRESHOLD_DAYS:
         return f"⚠️ 账号{index} Cookie 预计还有 {remaining} 天失效 — 建议尽快更新 BAIDUWP_ACCOUNTS"
     return None
