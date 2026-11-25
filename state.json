@@ -1,24 +1,19 @@
 {
   "accounts": {
     "account_1": {
-      "cookie_days_left": -84,
+      "cookie_days_left": -85,
       "cookie_fingerprint": "1d99feb4e0de2b0a",
       "cookie_first_seen": "2026-08-02",
       "fail_streak": 0,
-      "last_point_gain": "2026-11-24",
-      "last_run": "2026-11-24",
-      "last_success": "2026-11-24",
-      "total_runs": 113,
+      "last_point_gain": "2026-11-25",
+      "last_run": "2026-11-25",
+      "last_success": "2026-11-25",
+      "total_runs": 114,
       "zero_point_streak": 0
     }
   },
-  "last_run_at": "2026-11-24T10:53:13.571500+08:00",
+  "last_run_at": "2026-11-25T08:40:23.262880+08:00",
   "runs": [
-    {
-      "accounts": 1,
-      "date": "2026-10-26",
-      "total_points": 14
-    },
     {
       "accounts": 1,
       "date": "2026-10-27",
@@ -162,6 +157,11 @@
     {
       "accounts": 1,
       "date": "2026-11-24",
+      "total_points": 14
+    },
+    {
+      "accounts": 1,
+      "date": "2026-11-25",
       "total_points": 14
     }
   ],
